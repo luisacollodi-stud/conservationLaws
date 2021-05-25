@@ -2,15 +2,23 @@ from sympy  import*
 from sympy  import itermonomials as itm
 import time
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
+
 
 """
 SymPy implementation of PolyCons, an algorithm for the symbolic computation of PDE polynomial conservation laws.
 See the paper:
 M. Boreale, L. Collodi. A linear-algebraic method to compute polynomial PDE conservation laws. 2020.
 
-**Important: requires SymPy version is 1.1.1. May not work on newer versions**
-
-
+**Important: requires SymPy version 1.1.1. Will not work on newer versions. **
+  To downgrade SymPy, from the OS command prompt, issue: 
+      pip install sympy==1.1.1
+  To upgrade SymPy back after trying the code, from the OS command prompt, issue: 
+      pip install sympy --upgrade
+  (NB: pip may require administration privilege).
+  
+  
 The main functions are:   
 
     - initvar(indVars,depVars,derList):  declares independent and dependent variables and a list of corresponding derivatives (see examples below)
@@ -26,11 +34,11 @@ The main functions are:
 
          
   
-Only deals with leading linear systems. An example of usage is the following.             
+Only deals with "leading linear" systems (leading derivative in linear form). An example of usage is the following.             
 
 Fixing an order for the independent variables X=(t,x), we represent the derivatives u_{t^i x^j} as strings 'uij',
 with i,j nonnegative integers.
-Consider the case of the wave equation in (1+1)D: u_{tt}=u_{xx}. We have:                           
+Example. Consider the case of the wave equation in (1+1)D: u_{tt}=u_{xx}. We have:                           
 
 initvar('t x','u','u00 u10 u20 u01 u02')  # declares variables
 Wave={u20:u02}  # encodes the PDE system for which the conservation laws are to be computed ((1+1)D wave equation) 
@@ -39,7 +47,7 @@ con_lawsWave=findConservationLaws([u10, u01],2) # computes a basis for the vecto
 filtered_laws=filter(con_lawsWave)  # filters out trivial laws from the basis and returns the nontrivial ones
 
 
-Additional examples are shown at the end of the script.                            
+Additional examples are at the end of the script.                            
 
 
 """
@@ -77,6 +85,8 @@ def mydifftotal(expr, diffby):
         Returns:
             - SymPy expression, representing the total derivative of expr with respect to diffby 
     ''' 
+    if  type(expr)==int:
+        return 0
     j=indlist.index(diffby)+1
     utauset=expr.free_symbols.intersection(set(parametricDer+principalDer))
     diffmap={utau:derutau(utau,j) for utau in utauset}
@@ -311,7 +321,7 @@ def invariant(pt,returnpt=True):
              - pt_new: Poly object, representing the polynomial template after the parameter substitution
              - subs: list of tuples, representing a substitution for pt parameters such that pt is an invariant
     '''
-    print('  invoke A...')
+    print('  invoke normalization...')
     global indlist, parametricDer, principalDer
     start_A_time= time.time()
     #principal derivative of pt
@@ -336,10 +346,10 @@ def invariant(pt,returnpt=True):
     nullsubs=resolve(cf,qt.free_symbols.difference(set(indlist+parametricDer+principalDer)))  
 
     if returnpt:
-        print('  A time lapse:',time.time()-start_A_time)	
+        print('  Normalization time lapse:',time.time()-start_A_time)	
         return qt, nullsubs 
     else:
-        print('  A time lapse:',time.time()-start_A_time)	
+        print('  Normalization time lapse:',time.time()-start_A_time)	
         return nullsubs 
 
 #----------------------conservation laws-----------------------
@@ -416,7 +426,7 @@ def findConservationLaws(var, degree):
     s = invariant(dpt,False)
     
     #applies substitution to ptlist
-    print('  apply substitution on densities templates...') 
+    print('  apply substitution to flux templates...') 
     start_subs_time = time.time()
     subptlist=[]
     ssim=seq2sim(s)
@@ -521,7 +531,7 @@ def filter(p_list):
 
 #-----------support functions-----------------------
 
-from collections import Iterable
+from collections.abc import Iterable
 def initvar(indepX,dependU,listutau):  #declares variables and derivatives
     '''
     It initializes the global variables 'indlist', 'ulist', 'utaulist' with the first, the second 
@@ -608,6 +618,22 @@ def checkLinDep(D,F,Base):
     print('linear dep.:',res)
     return res 
 
+def computeSout(pt,ptder): 
+    '''
+    It applies normal form function to an external polynomial.
+    
+        Args:
+            - pt: expression, representing the polynomial to normalize
+            - ptder: list of symbols, representing the principl derivatives of pt
+            
+        Returns:
+            - the normalized polynomial
+    '''
+    completeSigma(ptder)
+    reduceSigma()
+    return pt.subs({q:sigma[q] for q in ptder}) 
+
+
 def normalizeLaw(law): 
     '''
     It eliminates parametric derivatives from all the components of the conservation law in question,
@@ -622,9 +648,15 @@ def normalizeLaw(law):
     '''
     res=[]
     for el in law:
-        ptder=list(el.free_symbols.intersection(set(principalDer)))
-        res.append(computeS(el, ptder))
+        if type(el)==int:
+            res.append(el)
+        else:
+            ptder=list(el.free_symbols.intersection(set(principalDer)))
+            res.append(computeSout(el, ptder))
     return res
+
+
+
 
 def div(p):
     '''
@@ -647,11 +679,12 @@ def equivalence(L):
             - L: list of expressions lists, representing a set of conservation laws
         
         Returns:
-            - the coefficients associated with equivalent laws
+            - equivalence classes of conservation laws (zero=trivial law)
     
     '''
     l=len(L)
-    parlist = list(var('bb%d' % j) for j in range(l))
+    zero=var('zero')
+    parlist = list(var('law%d' % j) for j in range(l))
     dpt=sum([parlist[j]*div(L[j]) for j in range(l)])
     gl= list(set(indlist+parametricDer+principalDer))
     cf=Poly(dpt,gl).coeffs()
@@ -659,9 +692,41 @@ def equivalence(L):
     for bb in parlist:
         s=solve(cf+[bb-1])
         if s!=[]:
-            equiv.append({cc for cc in s.keys() if s[cc]!=0})
-    return equiv
+            sols={cc for cc in s.keys() if s[cc]!=0}
+            if len(sols)==1:
+                sols=sols.union({zero})
+            equiv.append(sols)
+    return eqrel(equiv,parlist)
          
+
+
+def update(varlist):
+    for var in varlist:
+        if isPrincipal(var):
+            principalDer.append(var)
+        else:
+            parametricDer.append(var)
+            
+from itertools import combinations
+def eqrel(subsets,wholeset):            
+    sets = [set(x) for x in subsets]
+    stable = False
+    while not stable:                        # loop until no further reduction is found
+        stable = True
+        # iterate over pairs of distinct sets
+        for s,t in combinations(sets, 2):
+            if s & t:                        # do the sets intersect ?
+                s |= t                       # move items from t to s 
+                t ^= t                       # empty t
+                stable = False
+    # remove empty sets
+        sets = [s for s in sets if s!=set()]#list(filter(None, sets)) # added list() for python 3    
+    flatset=set(flatten(sets))   # add singletons from wholeset
+    for x in wholeset:
+        if x not in flatset:
+            sets.append(set({x}))
+    return sets
+        
   
 #----------------------------------------------------------------------
 #----------------------------Experiments--------------------------------
@@ -864,7 +929,6 @@ print('---Ansatz2: \t')
 print('law\'s number:',len(filtered_laws))
 
 
-
 #---------------other tests
 
 initvar('t x','u','u00 u10 u01 u03 u02 u04')  
@@ -913,4 +977,106 @@ initSigma(gordon)
 con_sg=findConservationLaws([u00, u01,v00,c00],2)
 filtered_laws=filter(con_sg) 
 print('law\'s number:',len(filtered_laws))
+ 
+
+#-------------- Comparison with Poole & Hereman, JSC 2011 ----------------
+#-------------------------------------------------------------------------
+#------------------------ (2+1)D equations -------------------------------
+#-------------------------------------------------------------------------
+
+#-------ZK
+
+print('EXAMPLE: (2+1)D ZK equation \t')
+
+initvar('t x y','u','u000, u100, u010, u030,u012, u011, u020 ')  
+zk={ u100:-u000*u010-u030-u012}   # set alfa=beta=1
+initSigma(zk)
+
+#rho terms -> done
+#fluxes terms
+u001,u020,u011=symbols('u001,u020,u011')
+update([u001,u020,u011])
+qt=normalizeLaw([3*u000**2, 2*u000**3-3*u001**2-3*u010**2+6*u000*u020, 6*u000*u011])
+
+print('No indipendent variables in the ansatz \t')
+con_kz=findConservationLaws([u000,u001,u020,u010,u011],3)
+filtered_laws_kza=filter(con_kz) 
+print('law\'s number:',len(filtered_laws_kza))
+equivalence(filtered_laws_kza) # 2 equivalence classes
+
+print('Hereman comparison\t')
+filtered_laws_kza.append(qt)
+equivalence(filtered_laws_kza) # 2 equivalence classes, qt in the same class with previuosly found law
+
+
+
+#--------
+
+print('With indipendent variables in the ansatz\t')
+initvar('t x y','u','u000, u100, u010, u030,u012,u020,u002')  
+zk={ u100:-u000*u010-u030-u012}   # set alfa=beta=1
+initSigma(zk)
+
+#rho terms -> u010, u001, u020, u002
+#fluxes terms
+qt=normalizeLaw([y**2*u000, 1/2*y**2*u000**2+y**2*u002+y**2*u020,0])
+
+con_kz=findConservationLaws([t,x,y,u000, u001,u010,u002,u020],4)
+filtered_laws_kzb=filter(con_kz) 
+print('law\'s number:',len(filtered_laws_kzb))
+equivalence(filtered_laws_kzb)  # 111 equivalence classes
+
+print('Hereman comparison\t')
+filtered_laws_kzb.append(qt)
+equivalence(filtered_laws_kzb) # 111 equivalence classes, qt in the same class with previuosly found law
+
+
+#-----Gardner
+
+print('EXAMPLE: (2+1)D Gardner equation \t')
+initvar('t x y','u v','u000, v000, v010, u010, v001, v011, u020, u100, u001, u030, v002, v020')
+gd={u001:v010, v001: u100/3 - u030/3 - 2*u000*u010 + u010*v000 + u000**2*u010/2}
+initSigma(gd)
+
+#rho terms-> u_x
+#fluxes terms
+qt1= normalizeLaw([-u000**2,
+  -(3*u000**4)/4 + 4*u000**3 - 3*u000**2*v000 + 2*u000*u020 - u010**2 - 3*v000**2,
+  u000**3 + 6*u000*v000])
+qt2= normalizeLaw( [-u000/3,
+  -(u000**3)/6 +  u000**2 -  u000*v000 +  u020/3,
+  (u000**2)/2 +  v000])
+
+print('No indipendent variables in the ansatz\t')
+con_gd=findConservationLaws([u000, v000, u010, u020],4) #added 2
+filtered_laws_gda=filter(con_gd)
+print('law\'s number:',len(filtered_laws_gda))
+equivalence(filtered_laws_gda)  # 3 equivalence classes
+
+print('Comparison with Poole & Hereman\t')    
+filtered_laws_gda.append(qt1)
+filtered_laws_gda.append(qt2)
+equivalence(filtered_laws_gda)  #  3 equivalence classes, qt1 and qt2 in the same class with previously found laws, hence non independent 
+
+
+#-------KP
+
+print('EXAMPLE: (2+1)D KP equation \t')
+initvar('t x y','u v','u000 v001 v000 v010 u100 u001 u200 u300 u002 u020 u010 u012 u011 u110 u111 u020 u040 u003 u030')  
+kp={u001:v000, v001:-u110-u010**2-u000*u020-u040}
+initSigma(kp)
+
+#rho term u_x
+#fluxes terms
+qt=normalizeLaw([u010,u000*u010+u030,u001])
+
+print('Without indipendent variables in the ansatz \t')
+con_kp=findConservationLaws([u000, u010, u030, v000],2)
+filtered_laws_kpa=filter(con_kp) 
+print('law\'s number:',len(filtered_laws_kpa))
+equivalence(filtered_laws_kpa) # 3 equivalence classes
+
+print('Hereman comparison\t')
+filtered_laws_kpa.append(qt)
+equivalence(filtered_laws_kpa) # 3 equivalence classes, qt in the same class with previuosly found law
 '''

@@ -1080,7 +1080,20 @@ equivalence(filtered_laws_kpa) # 3 equivalence classes
 print('Hereman comparison\t')
 filtered_laws_kpa.append(qt)
 equivalence(filtered_laws_kpa) # 3 equivalence classes, qt in the same class with previuosly found law
-'''
 
+
+
+----- Black-Scholes equation (variable coefficients) ------
+u_t+ (1/2)x^2*u_{xx}+ x*u_x−u = 0
+
+
+print('EXAMPLE: Black-Scholes equation \t')
+initvar('t x','u','u00  u10   u01 u02  u03')
+bs={u10: -(x**2*u02/2+x*u01-u00)}
+initSigma(bs)
+
+con_bs=findConservationLaws([t,x, u00,   u01, u02, u03],4)
+filtered_bs=filter(con_bs)
+'''
 
 

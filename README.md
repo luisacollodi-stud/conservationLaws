@@ -1,7 +1,2 @@
 # conservationLaws
-Python script for PolyCons algorithm accompanying the thesis: 'Algorithms for the
-symbolic computation of differential invariants, the case of PDEs'
-
-Candidate: Luisa Collodi 
-
-Thesis supervisor: Prof. Michele Boreale
+Python script for the PolyCons algorithm accompanying the paper "A linear-algebraic method to compute polynomial PDE conservation laws", by M. Boreale, L. Collodi, 2021.

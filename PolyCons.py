@@ -14,9 +14,9 @@ M. Boreale, L. Collodi. A linear-algebraic method to compute polynomial PDE cons
 **Important: requires SymPy version 1.1.1. Will not work on newer versions. **
   To downgrade SymPy, from the OS command prompt, issue: 
       pip install sympy==1.1.1
-  To upgrade SymPy back after trying the code, from the OS command prompt, issue: 
+  To upgrade SymPy after trying the code, from the OS command prompt, issue: 
       pip install sympy --upgrade
-  (NB: pip may require administration privilege).
+  (NB: pip may require administrator privileges).
   
   
 The main functions are:   
@@ -242,6 +242,7 @@ def computeS(pt,ptder):
         Returns:
             - the normalized polynomial
     '''
+    completeSigma(ptder)
     return pt.subs({q:sigma[q] for q in ptder}) 
 
 	
@@ -1080,3 +1081,6 @@ print('Hereman comparison\t')
 filtered_laws_kpa.append(qt)
 equivalence(filtered_laws_kpa) # 3 equivalence classes, qt in the same class with previuosly found law
 '''
+
+
+
